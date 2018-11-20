@@ -52,8 +52,7 @@ func (rrc *ResreveRatesCrawler) getEachReserveRate(block uint64, rsvAddr ethereu
 	var (
 		err   error
 		rates = &rsvRateCommon.ReserveRates{
-			BlockNumber: block,
-			Data:        make(map[string]rsvRateCommon.ReserveRateEntry),
+			Data: make(map[string]rsvRateCommon.ReserveRateEntry),
 		}
 		srcAddresses  []ethereum.Address
 		destAddresses []ethereum.Address

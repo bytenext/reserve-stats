@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"reflect"
 	"sync"
 	"time"
 
@@ -48,12 +49,14 @@ func retry(fn func(*zap.SugaredLogger) (map[string]common.ReserveRates, error), 
 	)
 
 	for i := 0; i < attempts; i++ {
-		result, err = fn(logger)
-		if err == nil {
+		if result, err = fn(logger); err == nil {
 			return result, nil
 		}
 
-		logger.Debugw("failed to execute job", "attempt", i)
+		logger.Debugw("failed to execute job",
+			"attempt", i,
+			"err", err.Error(),
+		)
 		time.Sleep(time.Second)
 	}
 
@@ -61,7 +64,6 @@ func retry(fn func(*zap.SugaredLogger) (map[string]common.ReserveRates, error), 
 }
 
 func (fj *FetcherJob) fetch(sugar *zap.SugaredLogger) (map[string]common.ReserveRates, error) {
-
 	client, err := app.NewEthereumClientFromFlag(fj.c)
 	if err != nil {
 		return nil, err
@@ -113,6 +115,7 @@ type Pool struct {
 	lastCompletedJobOrder int // Keep the order of the last completed job
 
 	rateStorage storage.ReserveRatesStorage
+	gr          *common.GroupedReserveRates
 }
 
 // NewPool returns a pool of workers
@@ -137,7 +140,6 @@ func NewPool(sugar *zap.SugaredLogger, maxWorkers int, rateStorage storage.Reser
 			for j := range pool.jobCh {
 				order, block := j.info()
 				rates, err := j.execute(sugar)
-
 				if err != nil {
 					logger.Errorw("fetcher job execution failed", "block", block, "err", err)
 					pool.errCh <- err
@@ -145,31 +147,35 @@ func NewPool(sugar *zap.SugaredLogger, maxWorkers int, rateStorage storage.Reser
 				}
 
 				logger.Infow("fetcher job executed successfully", "block", block)
-
-				// try to save rate into db until success
-				for saveSuccess := false; saveSuccess == false; time.Sleep(time.Second) {
-					var err error
-
-					pool.mutex.Lock()
-					if order == pool.lastCompletedJobOrder+1 {
-						if err = pool.rateStorage.UpdateRatesRecords(rates); err == nil {
-							logger.Debugw("reserve rates is stored successfully", "order", order)
-							saveSuccess = true
-							pool.lastCompletedJobOrder++
-						}
-					}
-					pool.mutex.Unlock()
-
-					if err != nil {
-						logger.Errorw("save rates into db failed",
-							"block", block,
-							"err", err)
-						pool.errCh <- err
-						break
-					}
+				if err = pool.storeRates(order, block, rates); err != nil {
+					pool.errCh <- err
+					break
 				}
 
-				logger.Infow("save rates into db success", "block", block)
+				//// try to save rate into db until success
+				//for saveSuccess := false; saveSuccess == false; time.Sleep(time.Second) {
+				//	var err error
+				//
+				//	pool.mutex.Lock()
+				//	if order == pool.lastCompletedJobOrder+1 {
+				//		if err = pool.rateStorage.UpdateRatesRecords(*common.GroupedReserveRates); err == nil {
+				//			logger.Debugw("reserve rates is stored successfully", "order", order)
+				//			saveSuccess = true
+				//			pool.lastCompletedJobOrder++
+				//		}
+				//	}
+				//	pool.mutex.Unlock()
+				//
+				//	if err != nil {
+				//		logger.Errorw("save rates into db failed",
+				//			"block", block,
+				//			"err", err)
+				//		pool.errCh <- err
+				//		break
+				//	}
+				//}
+				//
+				//logger.Infow("save rates into db success", "block", block)
 			}
 
 			logger.Infow("worker stopped",
@@ -212,4 +218,56 @@ func (p *Pool) Shutdown() {
 // ErrCh returns error reporting channel of workers pool.
 func (p *Pool) ErrCh() chan error {
 	return p.errCh
+}
+
+func (p *Pool) storeRates(order int, blockNumber uint64, rates map[string]common.ReserveRates) error {
+	var logger = p.sugar.With(
+		"func", "reserverates/workers/Pool.storeRates",
+		"order", order,
+		"block_number", blockNumber,
+	)
+
+	for {
+		p.mutex.Lock()
+		if order != p.lastCompletedJobOrder+1 {
+			logger.Debugw("waiting for next job to complete", "last_completed", p.lastCompletedJobOrder)
+			time.Sleep(time.Second / 2)
+			p.mutex.Unlock()
+			continue
+		}
+
+		logger.Debugw("previous job is completed", "last_completed", p.lastCompletedJobOrder)
+
+		if p.gr == nil {
+			logger.Debugw("starting new reserve rates group")
+			p.gr = &common.GroupedReserveRates{
+				// TODO: fill timestamp
+				// Timestamp: time.Time{},
+				FromBlock: blockNumber,
+				ToBlock:   blockNumber + 1,
+				Rates:     rates,
+			}
+			break
+		}
+
+		if reflect.DeepEqual(p.gr.Rates, rates) {
+			logger.Debugw("rates does not change, adding to current group",
+				"from_block", p.gr.FromBlock)
+			p.gr.ToBlock++
+			break
+		}
+
+		logger.Debugw("rates changed, storing to database",
+			"from_block", p.gr.FromBlock,
+			"rates", rates,
+			"grouped_rates", p.gr.Rates,
+		)
+		p.rateStorage.UpdateRatesRecords(p.gr)
+		p.gr = nil
+		break
+	}
+
+	p.lastCompletedJobOrder++
+	p.mutex.Unlock()
+	return nil
 }

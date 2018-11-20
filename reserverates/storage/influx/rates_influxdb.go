@@ -3,10 +3,9 @@ package influx
 import (
 	"bytes"
 	"errors"
+	"go.uber.org/zap"
 	"strconv"
 	"text/template"
-
-	"go.uber.org/zap"
 
 	"github.com/KyberNetwork/reserve-stats/lib/influxdb"
 	"github.com/KyberNetwork/reserve-stats/lib/timeutil"
@@ -67,7 +66,16 @@ func (rs *RateStorage) LastBlock() (int64, error) {
 
 // UpdateRatesRecords update all the rate records from different reserve to influxDB in one go.
 // It take a map[reserveAddress] ReserveRates and return error if occurs.
-func (rs *RateStorage) UpdateRatesRecords(rateRecords map[string]common.ReserveRates) error {
+// Successive rates entry with same values with be grouped to one data point.
+func (rs *RateStorage) UpdateRatesRecords(gr *common.GroupedReserveRates) error {
+	var logger = rs.sugar.With(
+		"func", "reserverates/storage/influx.RateStorage.UpdateRatesRecords",
+		"from_block", gr.FromBlock,
+		"to_block", gr.ToBlock,
+	)
+
+	logger.Debugw("storing grouped rates to database")
+
 	bp, err := influxClient.NewBatchPoints(
 		influxClient.BatchPointsConfig{
 			Database:  rs.dbName,
@@ -78,12 +86,13 @@ func (rs *RateStorage) UpdateRatesRecords(rateRecords map[string]common.ReserveR
 		return err
 	}
 
-	for rsvAddr, rateRecord := range rateRecords {
+	for rsvAddr, rateRecord := range gr.Rates {
 		for pair, rate := range rateRecord.Data {
 			tags := map[string]string{
 				schema.Reserve.String():     rsvAddr,
 				schema.Pair.String():        pair,
-				schema.BlockNumber.String(): strconv.FormatUint(rateRecord.BlockNumber, 10),
+				schema.BlockNumber.String(): strconv.FormatUint(gr.FromBlock, 10),
+				// TODO: add to block
 			}
 			fields := map[string]interface{}{
 				schema.BuyRate.String():        rate.BuyReserveRate,
@@ -98,7 +107,12 @@ func (rs *RateStorage) UpdateRatesRecords(rateRecords map[string]common.ReserveR
 			bp.AddPoint(pt)
 		}
 	}
-	return rs.client.Write(bp)
+
+	if err = rs.client.Write(bp); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetRatesByTimePoint returns all the rate record in a period of time of a reserve
@@ -172,15 +186,18 @@ func convertRowValueToReserveRate(v []interface{}, idxs schema.FieldsRegistrar) 
 	rate.Timestamp = timeStamp
 
 	// get Block number
-	blockNumberStr, ok := v[idxs[schema.BlockNumber]].(string)
-	if !ok {
-		return nil, errors.New("cannot convert influx interface to string")
-	}
-	blockNumber, err := strconv.ParseUint(blockNumberStr, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	rate.BlockNumber = blockNumber
+	//blockNumberStr, ok := v[idxs[schema.BlockNumber]].(string)
+	//if !ok {
+	//	return nil, errors.New("cannot convert influx interface to string")
+	//}
+	//blockNumber, err := strconv.ParseUint(blockNumberStr, 10, 64)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	// TODO: fix me
+	//rate.BlockNumber = blockNumber
+
 	// get pair
 	pairName, convertible := v[idxs[schema.Pair]].(string)
 	if !convertible {
@@ -202,11 +219,14 @@ func convertRowValueToReserveRate(v []interface{}, idxs schema.FieldsRegistrar) 
 	if err != nil {
 		return nil, err
 	}
-	reserve, ok := v[idxs[schema.Reserve]].(string)
-	if !ok {
-		return nil, errors.New("cannot conver influx interface to string")
-	}
-	rate.Reserve = reserve
+
+	//reserve, ok := v[idxs[schema.Reserve]].(string)
+	//if !ok {
+	//	return nil, errors.New("cannot conver influx interface to string")
+	//}
+
+	// TODO: fix me
+	//rate.Reserve = reserve
 
 	rate.Data[pairName] = common.ReserveRateEntry{
 		BuyReserveRate:  buyRate,
@@ -221,36 +241,38 @@ func convertQueryResultToRate(row influxModel.Row) (map[string]map[uint64]common
 	var (
 		result = make(map[string]map[uint64]common.ReserveRates)
 	)
-	if len(row.Values) == 0 {
-		return nil, nil
-	}
-	idxs, err := schema.NewFieldsRegistrar(row.Columns)
-	if err != nil {
-		return nil, err
-	}
-	//rates := make(map[uint64]common.ReserveRates)
-	for _, v := range row.Values {
-		rate, err := convertRowValueToReserveRate(v, idxs)
-		if err != nil {
-			return nil, err
-		}
+	// TODO: fix me
 
-		rates, ok := result[rate.Reserve]
-		if !ok {
-			result[rate.Reserve] = map[uint64]common.ReserveRates{rate.BlockNumber: *rate}
-			continue
-		}
-
-		if _, ok = rates[rate.BlockNumber]; !ok {
-			result[rate.Reserve][rate.BlockNumber] = *rate
-			continue
-		}
-
-		//append this rate.Pair to the total record.
-		for pair, rateEntry := range rate.Data {
-			result[rate.Reserve][rate.BlockNumber].Data[pair] = rateEntry
-		}
-
-	}
+	//if len(row.Values) == 0 {
+	//	return nil, nil
+	//}
+	//idxs, err := schema.NewFieldsRegistrar(row.Columns)
+	//if err != nil {
+	//	return nil, err
+	//}
+	////rates := make(map[uint64]common.ReserveRates)
+	//for _, v := range row.Values {
+	//	rate, err := convertRowValueToReserveRate(v, idxs)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//
+	//	rates, ok := result[rate.Reserve]
+	//	if !ok {
+	//		result[rate.Reserve] = map[uint64]common.ReserveRates{rate.BlockNumber: *rate}
+	//		continue
+	//	}
+	//
+	//	if _, ok = rates[rate.BlockNumber]; !ok {
+	//		result[rate.Reserve][rate.BlockNumber] = *rate
+	//		continue
+	//	}
+	//
+	//	//append this rate.Pair to the total record.
+	//	for pair, rateEntry := range rate.Rates {
+	//		result[rate.Reserve][rate.BlockNumber].Rates[pair] = rateEntry
+	//	}
+	//
+	//}
 	return result, nil
 }

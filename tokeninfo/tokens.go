@@ -158,7 +158,7 @@ const tokenData = `
   },
   {
     "id": "DTA",
-    "name": "Data",
+    "name": "Rates",
     "address": "0x69b148395ce0015c13e36bffbad63f49ef874e03",
     "decimals": 18,
     "active": true,

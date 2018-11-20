@@ -32,10 +32,16 @@ func NewReserveRateEntry(reserveRates, sanityRates []*big.Int, index int) Reserv
 
 // ReserveRates hold all the pairs's rate for a particular reserve and metadata
 type ReserveRates struct {
-	Timestamp   time.Time                   `json:"timestamp"`
-	BlockNumber uint64                      `json:"-"`
-	Data        map[string]ReserveRateEntry `json:"data"`
-	Reserve     string                      `json:"-"`
+	Timestamp time.Time                   `json:"timestamp"`
+	Data      map[string]ReserveRateEntry `json:"data"`
+}
+
+// GroupedReserveRates is the database presentation of reserve rates.
+type GroupedReserveRates struct {
+	Timestamp time.Time               `json:"timestamp"`
+	FromBlock uint64                  `json:"from_block"`
+	ToBlock   uint64                  `json:"to_block"`
+	Rates     map[string]ReserveRates `json:"rates"`
 }
 
 // MarshalJSON implements custom JSON marshaler for ReserveRates to format timestamp in unix millis instead of RFC3339.

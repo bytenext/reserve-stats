@@ -34,7 +34,7 @@ func setupTestInfluxClient() (client.Client, error) {
 	return influxClient, nil
 }
 
-// addTestData will systematically add test Data to fulfill how many records are needed and interval between them
+// addTestData will systematically add test data to fulfill how many records are needed and interval between them
 func addTestData(c client.Client) error {
 	bp, err := client.NewBatchPoints(
 		client.BatchPointsConfig{
