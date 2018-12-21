@@ -18,7 +18,6 @@ const (
 )
 
 var (
-
 	// ErrAppNotExist exported error for checking
 	ErrAppNotExist = errors.New("app does not exist")
 
@@ -53,7 +52,7 @@ CREATE TABLE IF NOT EXISTS "%s" (
 	app_name_id SERIAL NOT NULL REFERENCES app_name (id)
 );
 `
-	var logger = sugar.With("func", "appname/storage.NewAppNameDB")
+	var logger = sugar.With("func", "app-names/storage.NewAppNameDB")
 
 	tx, err := db.Beginx()
 	if err != nil {

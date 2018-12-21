@@ -5,6 +5,7 @@ import (
 	"os"
 
 	libapp "github.com/KyberNetwork/reserve-stats/lib/app"
+	"github.com/KyberNetwork/reserve-stats/lib/pgsql"
 	"github.com/KyberNetwork/reserve-stats/users/migration"
 	"github.com/urfave/cli"
 )
@@ -21,7 +22,7 @@ func main() {
 	app.Action = run
 	app.Version = "0.0.1"
 
-	app.Flags = append(app.Flags, libapp.NewPostgreSQLFlags(defaultDB)...)
+	app.Flags = append(app.Flags, pgsql.NewPostgreSQLFlags(defaultDB)...)
 	app.Flags = append(app.Flags,
 		cli.StringFlag{
 			Name:  boltDataSourceFlag,
@@ -59,7 +60,7 @@ func run(c *cli.Context) error {
 		return err
 	}
 
-	db, err := libapp.NewDBFromContext(c)
+	db, err := pgsql.NewDBFromContext(c)
 	if err != nil {
 		return err
 	}

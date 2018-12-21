@@ -8,6 +8,7 @@ import (
 	"github.com/KyberNetwork/reserve-stats/app-names/storage"
 	libapp "github.com/KyberNetwork/reserve-stats/lib/app"
 	"github.com/KyberNetwork/reserve-stats/lib/httputil"
+	"github.com/KyberNetwork/reserve-stats/lib/pgsql"
 	"github.com/urfave/cli"
 )
 
@@ -23,7 +24,7 @@ func main() {
 	app.Version = "0.0.1"
 	app.Flags = append(app.Flags)
 	app.Flags = append(app.Flags, httputil.NewHTTPCliFlags(httputil.AppName)...)
-	app.Flags = append(app.Flags, libapp.NewPostgreSQLFlags(defaultDB)...)
+	app.Flags = append(app.Flags, pgsql.NewPostgreSQLFlags(defaultDB)...)
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
@@ -41,7 +42,7 @@ func run(c *cli.Context) error {
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
-	db, err := libapp.NewDBFromContext(c)
+	db, err := pgsql.NewDBFromContext(c)
 	if err != nil {
 		return err
 	}

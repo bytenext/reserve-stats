@@ -6,6 +6,7 @@ import (
 
 	libapp "github.com/KyberNetwork/reserve-stats/lib/app"
 	"github.com/KyberNetwork/reserve-stats/lib/httputil"
+	"github.com/KyberNetwork/reserve-stats/lib/pgsql"
 	"github.com/KyberNetwork/reserve-stats/priceanalytics/http"
 	"github.com/KyberNetwork/reserve-stats/priceanalytics/storage"
 	"github.com/urfave/cli"
@@ -22,7 +23,7 @@ func main() {
 	app.Action = run
 	app.Version = "0.0.1"
 
-	app.Flags = append(app.Flags, libapp.NewPostgreSQLFlags(defaultDB)...)
+	app.Flags = append(app.Flags, pgsql.NewPostgreSQLFlags(defaultDB)...)
 	app.Flags = append(app.Flags, httputil.NewHTTPCliFlags(httputil.PriceAnalytic)...)
 
 	if err := app.Run(os.Args); err != nil {
@@ -40,7 +41,7 @@ func run(c *cli.Context) error {
 	sugar := logger.Sugar()
 	sugar.Info("Run price analytic module")
 
-	db, err := libapp.NewDBFromContext(c)
+	db, err := pgsql.NewDBFromContext(c)
 	if err != nil {
 		return err
 	}
