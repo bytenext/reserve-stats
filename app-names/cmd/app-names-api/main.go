@@ -13,13 +13,12 @@ import (
 )
 
 const (
-	dataFilePathFlag = "data-path"
-	defaultDB        = "app-names"
+	defaultDB = "app-names"
 )
 
 func main() {
 	app := libapp.NewApp()
-	app.Name = "Address to Intergration App Name"
+	app.Name = "Address to Integration App Name"
 	app.Action = run
 	app.Version = "0.0.1"
 	app.Flags = append(app.Flags)
@@ -57,7 +56,5 @@ func run(c *cli.Context) error {
 		return err
 	}
 
-	sugar.Info("Run Addr to Appname module")
 	return server.Run()
-
 }
