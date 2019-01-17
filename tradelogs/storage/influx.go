@@ -176,12 +176,16 @@ func prepareWalletFeeQuery() string {
 // LoadTradeLogs return trade logs from DB
 func (is *InfluxStorage) LoadTradeLogs(from, to time.Time) ([]common.TradeLog, error) {
 	var (
-		result = make([]common.TradeLog, 0)
-		q      = fmt.Sprintf(
+		result             = make([]common.TradeLog, 0)
+		excludingCondition = fmt.Sprintf(
+			`((%[1]s='%[2]s' AND  %[3]s='%[4]s') OR (%[1]s='%[4]s' AND %[3]s='%[2]s'	))`,
+			logschema.SrcAddr, blockchain.ETHAddr.Hex(), logschema.DstAddr, blockchain.WETHAddr.Hex(),
+		)
+		q = fmt.Sprintf(
 			`
-		SELECT %[1]s FROM %[6]s WHERE time >= '%[4]s' AND time <= '%[5]s' GROUP BY %[9]s;
+		SELECT %[1]s FROM %[6]s WHERE (time >= '%[4]s' AND time <= '%[5]s') GROUP BY %[9]s;
 		SELECT %[2]s FROM %[7]s WHERE time >= '%[4]s' AND time <= '%[5]s' GROUP BY %[10]s;
-		SELECT %[3]s FROM %[8]s WHERE time >= '%[4]s' AND time <= '%[5]s' GROUP BY %[11]s;
+		SELECT %[3]s FROM %[8]s WHERE time >= '%[4]s' AND time <= '%[5]s' AND %[12]s GROUP BY %[11]s;
 		`,
 			prepareBurnFeeQuery(),
 			prepareWalletFeeQuery(),
@@ -194,6 +198,7 @@ func (is *InfluxStorage) LoadTradeLogs(from, to time.Time) ([]common.TradeLog, e
 			burnschema.TxHash.String()+", "+burnschema.TradeLogIndex.String(),
 			walletschema.TxHash.String()+", "+walletschema.TradeLogIndex.String(),
 			logschema.TxHash.String()+", "+logschema.LogIndex.String(),
+			excludingCondition,
 		)
 
 		logger = is.sugar.With(
