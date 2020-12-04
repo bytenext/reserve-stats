@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -132,7 +133,7 @@ func (f *Fetcher) GetTradeHistory(fromIDs map[string]uint64, tokenPairs []binanc
 							symbol := "ETH" + pair.QuoteAsset
 							if err := f.updateTradeNotETH(pair.Symbol, symbol, oneSymbolTradeHistory); err != nil {
 								logger.Errorw("failed to update trade with no eth as quote", "symbol", symbol, "error", err)
-								// return err // ignore error until find a better way
+								return err
 							}
 						}
 
@@ -171,23 +172,19 @@ func (f *Fetcher) updateTradeNotETH(originalSymbol, symbol string, oneSymbolTrad
 
 		// get aggregated trade for that timestamp
 		var (
-			delta uint64 = 5 // default 5 senconds
+			delta uint64 = 60 * 60 * 100
 			res   []binance.AggregatedTrade
 			err   error
 		)
-		for {
-			startTime := endTime - delta
-			res, err = f.getGetAggregatedTradesWithRetry(symbol, startTime, endTime)
-			if err != nil {
-				logger.Errorw("failed to get aggregated trades from binance", "error", err)
-				return err
-			}
-			// increase delta if there is no result
-			if len(res) == 0 {
-				delta += 5
-				continue
-			}
-			break
+		startTime := endTime - delta + 1 // endTime - startTime < 1 hour
+		res, err = f.getGetAggregatedTradesWithRetry(symbol, startTime, endTime)
+		if err != nil {
+			logger.Errorw("failed to get aggregated trades from binance", "error", err)
+			return err
+		}
+		// increase delta if there is no result
+		if len(res) == 0 {
+			return fmt.Errorf("there is no trade for %s in 1 hour", symbol)
 		}
 		price, err := strconv.ParseFloat(res[0].Price, 64)
 		if err != nil {
